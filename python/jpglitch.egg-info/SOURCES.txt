@@ -1,0 +1,8 @@
+jpglitch.py
+setup.py
+jpglitch.egg-info/PKG-INFO
+jpglitch.egg-info/SOURCES.txt
+jpglitch.egg-info/dependency_links.txt
+jpglitch.egg-info/entry_points.txt
+jpglitch.egg-info/requires.txt
+jpglitch.egg-info/top_level.txt
