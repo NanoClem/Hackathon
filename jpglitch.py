@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
+import os
 import io
 import copy
 import random
 import click
+import xlrd
 
 from itertools import tee
 from PIL import Image
+
+
 
 
 def pairwise(iterable):
@@ -18,29 +22,80 @@ def pairwise(iterable):
     return zip(a, b)
 
 
+
+
+# Collecting data from USA presidential results of 2016
+# from an excel file
+
+def USA_result(xls) :
+
+    book  = xlrd.open_workbook("president_results_2016.xls")
+    sheet = book.sheet_by_index(0)
+
+    col             = 0
+    tab_etats       = [""]*sheet.nrows
+    tab_electeurs   = [0]*sheet.nrows
+    tab_Hilary      = [0.0]*sheet.nrows
+    tab_Trump       = [0.0]*sheet.nrows
+
+
+    for i in range(sheet.nrows):
+
+        Etats               = sheet.cell(rowx = i, colx = col).value
+        tab_etats[i]        = Etats
+
+        nb_electeurs        = sheet.cell(rowx = i, colx = col+1).value
+        tab_electeurs[i]    = int(nb_electeurs)
+
+        vote_Hilary         = sheet.cell(rowx = i, colx = col+2).value
+        tab_Hilary[i]       = float(vote_Hilary)
+
+        vote_Trump          = sheet.cell(rowx = i, colx = col+3).value
+        tab_Trump[i]        = float(vote_Trump)
+
+
+    all_results         = [tab_etats, tab_electeurs, tab_Trump, tab_Hilary]
+    # print(tab_etats[0])
+    # print(tab_electeurs[0])
+
+    return all_results
+
+
+
+
+
+# On construit une nouvelle image Jpeg en lui insérant les paramètres issus des données récupérées du fichier excel
+# new_amount :
+# new_seed :
+# new_iterations : nombre de grands électeurs par Etats
+
 class Jpeg(object):
 
-    def __init__(self, image_bytes, amount, seed, iterations):
+
+    def __init__(self, image_bytes, new_amount, new_seed, new_iterations):
+
         self.bytes = image_bytes
         self.new_bytes = None
+
+        self.amount = new_amount
+        self.seed = new_seed
+        self.iterations = new_iterations
+
         try:
             self.header_length = self.get_header_length()
         except ValueError as e:
             raise click.BadParameter(message=e.message)
 
-        self.parameters = {
-            'amount': amount,
-            'seed': seed,
-            'iterations': iterations
-        }
-
         self.glitch_bytes()
 
+
+
+    """Get the length of the header by searching sequential 0xFF 0xDA
+    values. These values mark the end of a Jpeg header. We add two to give
+    us a little leeway. We don't want to mess with the header.
+    """
+
     def get_header_length(self):
-        """Get the length of the header by searching sequential 0xFF 0xDA
-        values. These values mark the end of a Jpeg header. We add two to give
-        us a little leeway. We don't want to mess with the header.
-        """
 
         for i, pair in enumerate(pairwise(self.bytes)):
             if pair[0] == 255 and pair[1] == 218:
@@ -49,6 +104,9 @@ class Jpeg(object):
 
         raise ValueError('Not a valid jpg!')
 
+
+
+
     def glitch_bytes(self):
         """Glitch the image bytes, after the header based on the parameters.
         'Amount' is the hex value that will be written into the file. 'Seed'
@@ -56,9 +114,9 @@ class Jpeg(object):
         simple division by iterations. 'Iterations' should be self explanatory
         """
 
-        amount = self.parameters['amount'] / 100
-        seed = self.parameters['seed'] / 100
-        iterations = self.parameters['iterations']
+        amount = self.amount / 100
+        seed = self.seed / 100
+        iterations = self.iterations
 
         # work with a copy of the original bytes. We might need the original
         # bytes around if we glitch it so much we break the file.
@@ -92,6 +150,8 @@ class Jpeg(object):
 
         self.new_bytes = new_bytes
 
+
+
     def save_image(self, name):
         """Save the image to a file. Keep trying by re-glitching the image with
         less iterations if it fails
@@ -101,61 +161,73 @@ class Jpeg(object):
             try:
                 stream = io.BytesIO(self.new_bytes)
                 im = Image.open(stream)
-                im.save(name)
+                im.save("pictures/trump/" + name)
                 return
             except IOError:
-                if self.parameters['iterations'] == 1:
-                    raise click.BadParameter(message='This image is beyond\
-                            repair, maybe try again?', param_hint=['image'])
+                if self.iterations == 1:
+                    raise ValueError(message='This image is beyond\
+                            repair, maybe try again?')
 
-                self.parameters['iterations'] -= 1
+                self.iterations -= 1
                 self.glitch_bytes()
 
 
 
 
-@click.command()
-@click.option('--amount', '-a', type=click.IntRange(0, 99, clamp=True),
-              default=random.randint(0, 99), help="Insert high or low values?")
-@click.option('--seed', '-s', type=click.IntRange(0, 99, clamp=True),
-              default=random.randint(0, 99), help="Begin glitching at the\
-                      start on a bit later on.")
-@click.option('--iterations', '-i', type=click.IntRange(0, 115, clamp=True),
-              default=random.randint(0, 115), help="How many values should\
-                      get replaced.")
-@click.option('--jpg', is_flag=True, help="Output to jpg instead of png.\
-                      Note that png is more stable")
-@click.option('--output', '-o', help="What to call your glitched file.")
-@click.argument('image', type=click.File('rb'))
+#@click.command()
+# @click.option('--amount', '-a', type=click.IntRange(0, 99, clamp=True),
+#               default=random.randint(0, 99), help="Insert high or low values?")
+# @click.option('--seed', '-s', type=click.IntRange(0, 99, clamp=True),
+#               default=random.randint(0, 99), help="Begin glitching at the\
+#                       start on a bit later on.")
+# @click.option('--iterations', '-i', type=click.IntRange(0, 115, clamp=True),
+#               default=random.randint(0, 115), help="How many values should\
+#                       get replaced.")
+# @click.option('--jpg', is_flag=True, help="Output to jpg instead of png.\
+#                       Note that png is more stable")
+# @click.option('--output', '-o', help="What to call your glitched file.")
+# @click.argument('image', type=click.File('rb'))
 
 
 
 
-def cli(image, amount, seed, iterations, jpg, output):
-    image_bytes = bytearray(image.read())
-    jpeg = Jpeg(image_bytes, amount, seed, iterations)
+def cli(data, states, electors, Trump_res, Hilary_res) :
 
-    click.echo("\nScrambling your image with the following parameters:")
-    for key, value in jpeg.parameters.items():
-        click.echo(message=key + ': ' + str(value))
+    image_bytes = bytearray(data.read())
 
-    if output:
-        # TODO
-        # make the extension here count as guide for what to save the file as
-        # for now just ignore it if it's given
-        name = output.rsplit('.')[0]
-    else:
-        name = image.name.rsplit('.')[0] + "_glitched"
+    for i in range(len(states)) :
+        jpeg = Jpeg(image_bytes, Trump_res[i], Hilary_res[i], electors[i])
 
-    name += '%s' % ('.jpg' if jpg else '.png')
+    # click.echo("\nScrambling your image with the following parameters:")
+    # for key, value in jpeg.parameters.items():
+    #     click.echo(message=key + ': ' + str(value))
 
-    jpeg.save_image(name)
+        # if output:
+        #     # TODO
+        #     # make the extension here count as guide for what to save the file as
+        #     # for now just ignore it if it's given
+        #     name = output.rsplit('.')[0]
+        # else:
+        #     #state_name = states[i]
+        #     name = image.name.rsplit('.')[0] + "_glitched"
+        #
+        # name += '%s' % ('.jpg' if jpg else '.png')
+        state_name = states[i]
+        jpeg.save_image(state_name + "_trump.png")
 
-    output = "\nSucces! Checkout %s." % name
-    click.echo(output)
+        # output = "\n Succes! Checkout" % name
+        # click.echo(output)
 
 
 
 
 if __name__ == '__main__':
-    cli()
+
+    # Put here your excel file, make sure you gave the file's full path
+    xls = "president_results_2016.xls"
+    elections = USA_result(xls)
+    #print("states")
+
+    my_picture = open("trump.jpg", "rb")
+    # my_picture.show()
+    cli(my_picture, elections[0], elections[1], elections[2], elections[3])
